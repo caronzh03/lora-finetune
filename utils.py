@@ -500,8 +500,7 @@ def train_classifier_simple(model, train_loader, val_loader, optimizer, device, 
         for input_batch, target_batch in train_loader:
             if first_batch:
                 first_batch = False
-                print(f"***\nInput: {input_batch}\nOutput: {target_batch}\n"
-                      f"Input shape: {input_batch.shape}\nOutput shape: {target_batch.shape}")
+                print(f"***\nInput shape: {input_batch.shape}\nOutput shape: {target_batch.shape}")
             optimizer.zero_grad()  # Reset loss gradients from previous batch iteration
             loss = calc_loss_batch(input_batch, target_batch, model, device)
             loss.backward()  # Calculate loss gradients
