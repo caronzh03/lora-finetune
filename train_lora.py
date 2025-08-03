@@ -7,7 +7,7 @@ from lora import replace_linear_with_lora
 from utils import train_classifier_simple, plot_values, calc_accuracy_loader
 
 
-def train(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader):
+def train_classifier(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, test_loader: DataLoader):
     # Freeze base model weights
     for param in model.parameters():
         param.requires_grad = False

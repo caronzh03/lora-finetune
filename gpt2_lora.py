@@ -10,7 +10,7 @@ from utils import (
     to_classifier,
 )
 from gpt2_layers import GPTModel
-from train_lora import train
+from train_lora import train_classifier
 
 
 def initialize_gpt_model(model_variant: str) -> GPTModel:
@@ -57,7 +57,7 @@ def main():
     gpt_model = initialize_gpt_model(args.model_variant)
     gpt_model = to_classifier(gpt_model, dim=gpt_model.tok_emb.embedding_dim)
 
-    train(gpt_model, train_loader, val_loader, test_loader)
+    train_classifier(gpt_model, train_loader, val_loader, test_loader)
 
 
 if __name__ == "__main__":

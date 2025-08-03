@@ -16,7 +16,7 @@ from utils import (
 )
 from qwen_layers import Qwen3Model
 from qwen_tokenizer import Qwen3Tokenizer
-from train_lora import train
+from train_lora import train_classifier
 
 
 def initialize_qwen_tokenizer(model_variant: str, use_reasoning: bool) -> Qwen3Tokenizer:
@@ -175,7 +175,7 @@ def main():
     model = initialize_qwen_model(args.model_variant, args.use_reasoning)
     model = to_classifier(model, dim=model.tok_emb.embedding_dim)
 
-    train(model, train_loader, val_loader, test_loader)
+    train_classifier(model, train_loader, val_loader, test_loader)
 
 
 if __name__ == "__main__":
