@@ -18,7 +18,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 
-from dataset import SpamDataset
+from spam_dataset import SpamDataset
 
 
 def assign(left, right, tensor_name="unknown"):
@@ -173,7 +173,7 @@ def load_weights_into_qwen(model, param_config, params):
         model.out_head.weight = assign(model.out_head.weight, params["model.embed_tokens.weight"], "model.embed_tokens.weight")
 
 
-def calc_loss_loader(data_loader, model, device, num_batches=None):
+def calc_loss_loader(data_loader, model, device, num_batches=None, loss_func=None):
     total_loss = 0.
     if len(data_loader) == 0:
         return float("nan")
@@ -185,18 +185,18 @@ def calc_loss_loader(data_loader, model, device, num_batches=None):
         num_batches = min(num_batches, len(data_loader))
     for i, (input_batch, target_batch) in enumerate(data_loader):
         if i < num_batches:
-            loss = calc_loss_batch(input_batch, target_batch, model, device)
+            loss = loss_func(input_batch, target_batch, model, device)
             total_loss += loss.item()
         else:
             break
     return total_loss / num_batches
 
 
-def evaluate_model(model, train_loader, val_loader, device, eval_iter):
+def evaluate_model(model, train_loader, val_loader, device, eval_iter, loss_func=None):
     model.eval()
     with torch.no_grad():
-        train_loss = calc_loss_loader(train_loader, model, device, num_batches=eval_iter)
-        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter)
+        train_loss = calc_loss_loader(train_loader, model, device, num_batches=eval_iter, loss_func=loss_func)
+        val_loss = calc_loss_loader(val_loader, model, device, num_batches=eval_iter, loss_func=loss_func)
     model.train()
     return train_loss, val_loss
 
@@ -280,6 +280,13 @@ def calc_loss_batch(input_batch, target_batch, model, device):
     return loss
 
 
+def calc_instruction_loss_batch(input_batch, target_batch, model, device):
+    input_batch, target_batch = input_batch.to(device), target_batch.to(device)
+    logits = model(input_batch)
+    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+    return loss
+
+
 # Overall the same as `train_model_simple` in chapter 5
 def train_classifier_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
                             eval_freq, eval_iter):
@@ -306,7 +313,7 @@ def train_classifier_simple(model, train_loader, val_loader, optimizer, device, 
             # Optional evaluation step
             if global_step % eval_freq == 0:
                 train_loss, val_loss = evaluate_model(
-                    model, train_loader, val_loader, device, eval_iter)
+                    model, train_loader, val_loader, device, eval_iter, loss_func=calc_loss_batch)
                 train_losses.append(train_loss)
                 val_losses.append(val_loss)
                 print(f"Ep {epoch+1} (Step {global_step:06d}): "
@@ -323,7 +330,39 @@ def train_classifier_simple(model, train_loader, val_loader, optimizer, device, 
     return train_losses, val_losses, train_accs, val_accs, examples_seen
 
 
-def plot_values(epochs_seen, examples_seen, train_values, val_values, label="loss"):
+def train_model_simple(model, train_loader, val_loader, optimizer, device, num_epochs,
+                       eval_freq, eval_iter):
+    # Initialize lists to track losses and tokens seen
+    train_losses, val_losses, track_tokens_seen = [], [], []
+    tokens_seen, global_step = 0, -1
+
+    # Main training loop
+    for epoch in range(num_epochs):
+        model.train()  # Set model to training mode
+
+        for input_batch, target_batch in train_loader:
+            optimizer.zero_grad()  # Reset loss gradients from previous batch iteration
+            loss = calc_instruction_loss_batch(input_batch, target_batch, model, device)
+            loss.backward()  # Calculate loss gradients
+            optimizer.step()  # Update model weights using loss gradients
+            tokens_seen += input_batch.numel()
+            global_step += 1
+
+            # Optional evaluation step
+            if global_step % eval_freq == 0:
+                train_loss, val_loss = evaluate_model(
+                    model, train_loader, val_loader, device, eval_iter,
+                    loss_func=calc_instruction_loss_batch)
+                train_losses.append(train_loss)
+                val_losses.append(val_loss)
+                track_tokens_seen.append(tokens_seen)
+                print(f"Ep {epoch+1} (Step {global_step:06d}): "
+                      f"Train loss {train_loss:.3f}, Val loss {val_loss:.3f}")
+
+    return train_losses, val_losses, track_tokens_seen
+
+
+def plot_values(epochs_seen, examples_seen, train_values, val_values, label="loss", x_axis="Examples seen"):
     fig, ax1 = plt.subplots(figsize=(5, 3))
 
     # Plot training and validation loss against epochs
@@ -336,13 +375,13 @@ def plot_values(epochs_seen, examples_seen, train_values, val_values, label="los
     # Create a second x-axis for tokens seen
     ax2 = ax1.twiny()  # Create a second x-axis that shares the same y-axis
     ax2.plot(examples_seen, train_values, alpha=0)  # Invisible plot for aligning ticks
-    ax2.set_xlabel("Examples seen")
+    ax2.set_xlabel(x_axis)
 
     fig.tight_layout()  # Adjust layout to make room
     plt.savefig(f"{label}-plot.pdf")
 
 
-def download_data(data_dir: str):
+def download_spam_data(data_dir: str):
     url = "https://archive.ics.uci.edu/static/public/228/sms+spam+collection.zip"
     zip_path = "sms_spam_collection.zip"
     extracted_path = "sms_spam_collection"
@@ -366,7 +405,7 @@ def download_data(data_dir: str):
     print(f"Train and Validation datasets saved to {data_dir}")
 
 
-def create_dataloaders(tokenizer, data_dir: str) -> tuple:
+def create_spam_dataloaders(tokenizer, data_dir: str) -> tuple:
     train_dataset = SpamDataset(f"{data_dir}/train.csv", max_length=None, tokenizer=tokenizer)
     val_dataset = SpamDataset(f"{data_dir}/validation.csv", max_length=train_dataset.max_length,
                               tokenizer=tokenizer)

@@ -5,8 +5,8 @@ import tiktoken
 from gpt_download import download_and_load_gpt2
 from utils import (
     load_weights_into_gpt,
-    download_data,
-    create_dataloaders,
+    download_spam_data,
+    create_spam_dataloaders,
     to_classifier,
 )
 from gpt2_layers import GPTModel
@@ -50,9 +50,9 @@ def main():
     args = parser.parse_args()
 
     torch.manual_seed(123)
-    download_data(args.data_dir)
-    train_loader, val_loader, test_loader = create_dataloaders(tiktoken.get_encoding("gpt2")
-,args.data_dir)
+    download_spam_data(args.data_dir)
+    train_loader, val_loader, test_loader = create_spam_dataloaders(tiktoken.get_encoding("gpt2")
+                                                                    , args.data_dir)
 
     gpt_model = initialize_gpt_model(args.model_variant)
     gpt_model = to_classifier(gpt_model, dim=gpt_model.tok_emb.embedding_dim)

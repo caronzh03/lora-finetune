@@ -1,7 +1,5 @@
 from pathlib import Path
-from torch.utils.data import DataLoader
 import argparse
-import time
 import torch
 import json
 import os
@@ -10,13 +8,15 @@ from huggingface_hub import hf_hub_download, snapshot_download
 
 from utils import (
     load_weights_into_qwen,
-    download_data,
-    create_dataloaders,
+    download_spam_data,
+    create_spam_dataloaders,
     to_classifier,
 )
 from qwen_layers import Qwen3Model
 from qwen_tokenizer import Qwen3Tokenizer
-from train_lora import train_classifier
+from train_lora import train_classifier, train_instruction
+from instruction_dataset import download_instruction_dataset, create_instruction_dataloaders
+from generate_response import generate_response
 
 
 def initialize_qwen_tokenizer(model_variant: str, use_reasoning: bool) -> Qwen3Tokenizer:
@@ -165,17 +165,26 @@ def main():
     parser.add_argument("--model-variant", type=str, default="0.6B")
     parser.add_argument("--use-reasoning", action="store_true")
     parser.add_argument("--data-dir", type=str, default="data")
+    parser.add_argument("--classifier", action="store_true",
+                        help="If specified, train a classifier head instead")
     args = parser.parse_args()
 
     torch.manual_seed(123)
-    download_data(args.data_dir)
     qwen_tokenizer = initialize_qwen_tokenizer(args.model_variant, args.use_reasoning)
-    train_loader, val_loader, test_loader = create_dataloaders(qwen_tokenizer, args.data_dir)
-
     model = initialize_qwen_model(args.model_variant, args.use_reasoning)
-    model = to_classifier(model, dim=model.tok_emb.embedding_dim)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    train_classifier(model, train_loader, val_loader, test_loader)
+    if args.classifier:
+        download_spam_data(args.data_dir)
+        train_loader, val_loader, test_loader = create_spam_dataloaders(qwen_tokenizer, args.data_dir)
+        model = to_classifier(model, dim=model.tok_emb.embedding_dim)
+        train_classifier(model, train_loader, val_loader, test_loader)
+    else:
+        train_data, val_data, test_data = download_instruction_dataset(args.data_dir)
+        train_loader, val_loader, test_loader = create_instruction_dataloaders(
+            qwen_tokenizer, train_data, val_data, test_data, device)
+        train_instruction(model, train_loader, val_loader, test_loader)
+        generate_response(model, qwen_tokenizer, test_data, device)
 
 
 if __name__ == "__main__":
