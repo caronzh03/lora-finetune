@@ -21,15 +21,18 @@ class Qwen3Tokenizer():
             )
         self.tokenizer = Tokenizer.from_file(tokenizer_file_path)
 
-    def encode(self, prompt):
-        messages = [
-            {"role": "user", "content": prompt}
-        ]
-        formatted_prompt = self.format_qwen_chat(
-            messages,
-            add_generation_prompt=self.add_generation_prompt,
-            add_thinking=self.add_thinking
-        )
+    def encode(self, prompt, use_chat_template=True):
+        if use_chat_template:
+            messages = [
+                {"role": "user", "content": prompt}
+            ]
+            formatted_prompt = self.format_qwen_chat(
+                messages,
+                add_generation_prompt=self.add_generation_prompt,
+                add_thinking=self.add_thinking
+            )
+        else:
+            formatted_prompt = prompt
         return self.tokenizer.encode(formatted_prompt).ids
 
     def decode(self, token_ids):

@@ -42,7 +42,7 @@ class InstructionDataset(Dataset):
             ]
             full_text = tokenizer.format_qwen_chat(messages)
             self.encoded_texts.append(
-                tokenizer.encode(full_text)
+                tokenizer.encode(full_text, use_chat_template=False)
             )
 
     def __getitem__(self, index):
