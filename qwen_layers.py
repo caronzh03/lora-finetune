@@ -210,7 +210,12 @@ class Qwen3Model(nn.Module):
         self.cfg = cfg
 
     def forward(self, in_idx):
-        # Forward pass
+        x = self.hidden_states(in_idx)
+        logits = self.out_head(x.to(self.cfg["dtype"]))
+        return logits
+
+    def hidden_states(self, in_idx):
+        # Return the hidden states before the output head.
         tok_embeds = self.tok_emb(in_idx)
         x = tok_embeds
 
@@ -220,5 +225,4 @@ class Qwen3Model(nn.Module):
         for block in self.trf_blocks:
             x = block(x, mask, self.cos, self.sin)
         x = self.final_norm(x)
-        logits = self.out_head(x.to(self.cfg["dtype"]))
-        return logits
+        return x

@@ -1,11 +1,16 @@
+from dataclasses import dataclass, field
 from pathlib import Path
 import argparse
+from typing import Optional
 import torch
 import json
 import os
 from safetensors.torch import load_file
 from huggingface_hub import hf_hub_download, snapshot_download
 
+from redrafter.configuration_drafter import DrafterConfig
+from redrafter.model import ReDrafter
+from redrafter.modeling_drafter import Drafter
 from utils import (
     load_weights_into_qwen,
     download_spam_data,
@@ -17,6 +22,14 @@ from qwen_tokenizer import Qwen3Tokenizer
 from train_lora import train_classifier, train_instruction
 from instruction_dataset import download_instruction_dataset, create_instruction_dataloaders
 from generate_response import generate_response
+
+
+@dataclass
+class ModelArguments:
+    drafter_predict_n_tokens: int = 5
+    drafter_top_k: int = 5
+    drafter_num_layers: int = 1
+    rnn: bool = False
 
 
 def initialize_qwen_tokenizer(model_variant: str, use_reasoning: bool) -> Qwen3Tokenizer:
@@ -36,7 +49,7 @@ def initialize_qwen_tokenizer(model_variant: str, use_reasoning: bool) -> Qwen3T
     return tokenizer
 
 
-def initialize_qwen_model(model_variant: str, use_reasoning: bool) -> Qwen3Model:
+def initialize_qwen_model(model_variant: str, use_reasoning: bool, redrafter: bool) -> Qwen3Model:
     if model_variant == "0.6B":
         qwen3_config = {
             "vocab_size": 151_936,  # Vocabulary size
@@ -155,6 +168,20 @@ def initialize_qwen_model(model_variant: str, use_reasoning: bool) -> Qwen3Model
             weights_dict.update(shard)
 
     load_weights_into_qwen(model, qwen3_config, weights_dict)
+
+    if redrafter:
+        model_args = ModelArguments(rnn=redrafter)
+        drafter_config = DrafterConfig(
+            vocab_size=model.out_head.weight.shape[0],
+            hidden_size=model.out_head.weight.shape[-1],
+            exit_dim=2 * model.out_head.weight.shape[-1],
+            num_draft_layers=model_args.drafter_num_layers,
+            rnn=model_args.rnn,
+        )
+        drafter = Drafter(drafter_config)
+        redrafter = ReDrafter(model, drafter)
+        return redrafter
+
     return model
 
 
@@ -167,11 +194,13 @@ def main():
     parser.add_argument("--data-dir", type=str, default="data")
     parser.add_argument("--classifier", action="store_true",
                         help="If specified, train a classifier head instead")
+    parser.add_argument("--redrafter", action="store_true",
+                        help="If specified, add ReDrafter head while training LoRA")
     args = parser.parse_args()
 
     torch.manual_seed(123)
     qwen_tokenizer = initialize_qwen_tokenizer(args.model_variant, args.use_reasoning)
-    model = initialize_qwen_model(args.model_variant, args.use_reasoning)
+    model = initialize_qwen_model(args.model_variant, args.use_reasoning, args.redrafter)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     if args.classifier:
@@ -183,7 +212,7 @@ def main():
         train_data, val_data, test_data = download_instruction_dataset(args.data_dir)
         train_loader, val_loader, test_loader = create_instruction_dataloaders(
             qwen_tokenizer, train_data, val_data, test_data, device)
-        train_instruction(model, train_loader, val_loader, test_loader)
+        train_instruction(model, train_loader, val_loader)
         generate_response(model, qwen_tokenizer, test_data, device)
 
 

@@ -18,6 +18,8 @@ import torch
 from torch.utils.data import DataLoader
 from torch import nn
 
+from redrafter.loss import drafter_loss
+from redrafter.model import ReDrafter
 from spam_dataset import SpamDataset
 
 
@@ -282,8 +284,24 @@ def calc_loss_batch(input_batch, target_batch, model, device):
 
 def calc_instruction_loss_batch(input_batch, target_batch, model, device):
     input_batch, target_batch = input_batch.to(device), target_batch.to(device)
-    logits = model(input_batch)
-    loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+    is_redrafter = isinstance(model, ReDrafter)
+    if is_redrafter:
+        # redrafter loss
+        redrafter_logits = model(input_batch, next_n=5)  # [next_n, batch_size, seq_len, vocab_size]
+        redrafter_loss, _, _ = drafter_loss(redrafter_logits, target_batch, next_n=5, top_k=5)
+
+        # llm lora loss
+        llm_logits = model.llm(input_batch)  # [batch_size, seq_len, vocab_size]
+        llm_loss = torch.nn.functional.cross_entropy(llm_logits.flatten(0, 1), target_batch.flatten())
+
+        # weighted loss
+        alpha = 0.8
+        loss = (1 - alpha) * redrafter_loss + alpha * llm_loss
+    
+    else:
+        logits = model(input_batch)
+        loss = torch.nn.functional.cross_entropy(logits.flatten(0, 1), target_batch.flatten())
+
     return loss
 
 
