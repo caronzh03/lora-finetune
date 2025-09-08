@@ -2,9 +2,17 @@ from tqdm import tqdm
 import torch
 
 from instruction_dataset import format_input
+from redrafter.model import ReDrafter
 
 
 def generate(model, idx, max_new_tokens, context_size, temperature=0.0, top_k=None, eos_id=None):
+    """Generate new tokens given a model and an initial sequence of token IDs."""
+
+    is_redrafter = isinstance(model, ReDrafter)
+
+    if is_redrafter:
+        model = model.llm  # Use only the LLM part for generation
+        # TODO: implement drafter-based generation
 
     # For-loop is the same as before: Get logits, and only focus on last time step
     for _ in range(max_new_tokens):

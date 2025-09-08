@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from lora import replace_linear_with_lora
+from redrafter.model import ReDrafter
 from utils import train_classifier_simple, plot_values, calc_accuracy_loader, train_model_simple
 
 
@@ -51,15 +52,31 @@ def train_classifier(model: nn.Module, train_loader: DataLoader, val_loader: Dat
     print(f"Test accuracy: {test_accuracy * 100:.2f}%")
 
 
-def train_instruction(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader, test_data: list[dict]):
-    # Freeze base model weights
-    for param in model.parameters():
-        param.requires_grad = False
+def train_instruction(model: nn.Module, train_loader: DataLoader, val_loader: DataLoader):
+    is_redrafter = isinstance(model, ReDrafter)
+    if is_redrafter:
+        print("Training a ReDrafter model with LoRA.")
+        # Freeze base model weights
+        for param in model.llm.parameters():
+            param.requires_grad = False
 
-    # Replace Linear layers with LinearWithLoRA layers
-    replace_linear_with_lora(model, rank=16, alpha=16)
-    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Total trainable LoRA parameters: {total_params:,}")
+        # Replace llm Linear layers with LinearWithLoRA layers
+        replace_linear_with_lora(model.llm, rank=16, alpha=16)
+        total_llm_params = sum(p.numel() for p in model.llm.parameters() if p.requires_grad)
+        total_drafter_params = sum(p.numel() for p in model.drafter.parameters() if p.requires_grad)
+        total_params = total_llm_params + total_drafter_params
+        print(f"Total LoRA parameters: {total_llm_params:,}, Drafter parameters: {total_drafter_params:,}, total trainable parameters: {total_params:,}")
+    else:
+        print("Training a base Qwen model with LoRA.")
+        # Freeze base model weights
+        for param in model.parameters():
+            param.requires_grad = False
+        
+        # Replace Linear layers with LinearWithLoRA layers
+        replace_linear_with_lora(model, rank=16, alpha=16)
+        total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"Total trainable LoRA parameters: {total_params:,}")
+
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -70,6 +87,7 @@ def train_instruction(model: nn.Module, train_loader: DataLoader, val_loader: Da
     model.train()
 
     start_time = time.time()
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5, weight_decay=0.1)
     num_epochs = 2
     train_losses, val_losses, tokens_seen = train_model_simple(
