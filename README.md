@@ -1,4 +1,4 @@
-# Qwen-from-scratch
+# LoRA Finetune Qwen with Recurrent Drafter Option
 
 This repository provides code for training, fine-tuning, and evaluating Qwen3 language models with LoRA and ReDrafter support. It includes utilities for loading open-source Qwen3 weights, applying LoRA adapters, training on classification and instruction datasets, and generating model responses.
 
@@ -81,7 +81,3 @@ If you use this codebase, please cite the original Qwen3 and LoRA papers.
 ## License
 
 See the `LICENSE` file for details.
-
----
-
-**Note:** This repo is for research and educational purposes. For commercial use, check the respective model and
