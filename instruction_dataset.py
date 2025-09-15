@@ -119,6 +119,7 @@ def download_and_load_file(file_path, url):
 
 
 def download_instruction_dataset(data_dir: str):
+    os.makedirs(data_dir, exist_ok=True)
     file_path = f"{data_dir}/instruction-data.json"
     url = "https://raw.githubusercontent.com/rasbt/LLMs-from-scratch/main/ch07/01_main-chapter-code/instruction-data.json"
     data = download_and_load_file(file_path, url)
